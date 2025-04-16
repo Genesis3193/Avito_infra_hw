@@ -37,7 +37,15 @@ class ItemStorage:
         """
         # In production environment we will use migration tool
         # like https://github.com/pressly/goose
-        # YOUR CODE GOES HERE
+        async with self._pool.acquire() as connection:
+            await connection.execute('''
+                CREATE TABLE IF NOT EXISTS items (
+                    item_id BIGINT PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL
+                )
+            ''')
 
     async def save_items(self, items: list[ItemEntry]) -> None:
         """
@@ -46,7 +54,17 @@ class ItemStorage:
         """
         # Don't use str-formatting, query args should be escaped to avoid
         # sql injections https://habr.com/ru/articles/148151/.
-        # YOUR CODE GOES HERE
+        it1 = []
+        for i in items:
+            it1.append({'item_id': i.item_id, 'user_id': i.user_id, 
+                        'title': i.title, 'description': i.description})
+        async with self._pool.acquire() as connection:      
+            await connection.executemany('''
+            INSERT INTO items (item_id, user_id, title, description)
+            VALUES ($1, $2, $3, $4)
+            ''', [(it1[i]['item_id'], it1[i]['user_id'], it1[i]['title'], it1[i]['description'])
+                  for i in range(len(it1))])
+            
 
     async def find_similar_items(
         self, user_id: int, title: str, description: str
@@ -54,4 +72,15 @@ class ItemStorage:
         """
         Напишите код для поиска записей, имеющих указанные user_id, title и description.
         """
-        # YOUR CODE GOES HERE
+        async with self._pool.acquire() as connection:
+            result = await connection.fetch('''SELECT item_id FROM items 
+                                   WHERE
+                                        user_id = $1
+                                        and title = $2
+                                        and description = $3 
+
+            ''', user_id, title, description)
+            res_list = []
+            for i in result:
+                res_list.append(ItemEntry(item_id=i[0], user_id=None, title=None, description=None))
+            return res_list
